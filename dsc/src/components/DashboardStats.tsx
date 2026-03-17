@@ -28,9 +28,9 @@ export const DashboardStats = () => {
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {stats.map((stat) => (
         <article key={stat.label} className="glass-surface rounded-xl px-4 py-3">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
-          <p className="mt-2 text-xl font-semibold text-slate-100">{stat.value}</p>
-          <p className="mt-1 text-xs text-slate-400">{stat.helper}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-500">{stat.label}</p>
+          <p className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">{stat.value}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{stat.helper}</p>
         </article>
       ))}
     </section>

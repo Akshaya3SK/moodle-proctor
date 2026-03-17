@@ -4,7 +4,7 @@
 
 html,
 body {
-  @apply bg-background text-slate-100;
+  @apply bg-slate-100 text-slate-900 dark:bg-background dark:text-slate-100;
 }
 
 body {
@@ -12,23 +12,23 @@ body {
 }
 
 .glass-surface {
-  @apply border border-slate-800/80 bg-slate-900/85;
+  @apply border border-slate-200 bg-white dark:border-slate-800/80 dark:bg-slate-900/85;
 }
 
 .surface-muted {
-  @apply border border-slate-800/80 bg-slate-950/70;
+  @apply border border-slate-200 bg-slate-50 dark:border-slate-800/80 dark:bg-slate-950/70;
 }
 
 .surface-strong {
-  @apply bg-slate-950/90 border border-slate-700/80;
+  @apply border border-slate-300 bg-slate-100 dark:border-slate-700/80 dark:bg-slate-950/90;
 }
 
 .section-title {
-  @apply text-sm font-semibold tracking-tight text-slate-100;
+  @apply text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100;
 }
 
 .section-copy {
-  @apply text-[11px] text-slate-400;
+  @apply text-[11px] text-slate-500 dark:text-slate-400;
 }
 
 .scroll-thin {

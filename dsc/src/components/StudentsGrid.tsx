@@ -7,7 +7,7 @@ export const StudentsGrid = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="section-title">Live Monitoring</h2>
-          <p className="mt-1 text-xs text-slate-400">{monitoringStudents.length} students on screen</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{monitoringStudents.length} students on screen</p>
         </div>
       </div>
 

@@ -13,7 +13,7 @@ export const ReportTable = () => {
 
       <div className="scroll-thin overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-800 bg-slate-950/80 text-slate-400">
+          <thead className="border-b border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
             <tr>
               <th className="px-4 py-3 text-left font-medium">Student</th>
               <th className="px-4 py-3 text-left font-medium">Exam</th>
@@ -24,11 +24,11 @@ export const ReportTable = () => {
           </thead>
           <tbody>
             {examReports.map((report) => (
-              <tr key={report.id} className="border-b border-slate-900/70">
-                <td className="px-4 py-3 text-slate-100">{report.studentName}</td>
-                <td className="px-4 py-3 text-slate-300">{report.exam}</td>
-                <td className="px-4 py-3 text-slate-300">{report.alertsCount}</td>
-                <td className="px-4 py-3 text-slate-300">{report.uploadStatus}</td>
+              <tr key={report.id} className="border-b border-slate-200 dark:border-slate-900/70">
+                <td className="px-4 py-3 text-slate-900 dark:text-slate-100">{report.studentName}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{report.exam}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{report.alertsCount}</td>
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{report.uploadStatus}</td>
                 <td className="px-4 py-3 text-right">
                   <button className="text-sky-300 hover:text-sky-200">Open</button>
                 </td>

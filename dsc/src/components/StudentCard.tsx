@@ -17,14 +17,14 @@ export const StudentCard = ({ student }: Props) => {
 
   return (
     <article className="glass-surface rounded-xl p-4">
-      <div className="mb-4 flex aspect-video items-center justify-center rounded-lg border border-dashed border-slate-800 bg-slate-950 text-xs text-slate-500">
+      <div className="mb-4 flex aspect-video items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-950">
         Camera feed
       </div>
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-100">{student.name}</p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{student.name}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {student.id} · {student.exam}
           </p>
         </div>
@@ -32,7 +32,7 @@ export const StudentCard = ({ student }: Props) => {
       </div>
 
       <div className="mt-4 flex items-center justify-between text-xs">
-        <span className="text-slate-400">Connection</span>
+        <span className="text-slate-500 dark:text-slate-400">Connection</span>
         <span className={connectionTone}>{student.connection}</span>
       </div>
     </article>

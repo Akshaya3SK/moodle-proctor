@@ -44,7 +44,7 @@ export const Sidebar = () => {
               href={item.href}
               className={[
                 "inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm",
-                active ? "bg-slate-100 text-slate-950" : "text-slate-300"
+                active ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950" : "text-slate-700 dark:text-slate-300"
               ].join(" ")}
             >
               {item.icon}
@@ -55,9 +55,9 @@ export const Sidebar = () => {
       </div>
 
       <aside className="glass-surface hidden w-60 shrink-0 rounded-xl px-3 py-4 lg:flex lg:h-[calc(100vh-2rem)] lg:flex-col lg:overflow-y-auto">
-        <div className="border-b border-slate-800 px-2 pb-4">
-          <p className="text-sm font-semibold text-slate-100">ProctorVision</p>
-          <p className="mt-1 text-xs text-slate-400">Teacher Console</p>
+        <div className="border-b border-slate-200 px-2 pb-4 dark:border-slate-800">
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">ProctorVision</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Teacher Console</p>
         </div>
 
         <nav className="mt-4 flex flex-1 flex-col gap-1">
@@ -70,7 +70,9 @@ export const Sidebar = () => {
                 href={item.href}
                 className={[
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm",
-                  active ? "bg-slate-100 text-slate-950" : "text-slate-300 hover:bg-slate-800"
+                  active
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950"
+                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 ].join(" ")}
               >
                 {item.icon}
@@ -83,7 +85,7 @@ export const Sidebar = () => {
         <button
           type="button"
           onClick={() => router.push("/login")}
-          className="mt-4 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+          className="mt-4 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           <FiLogOut className="h-4 w-4" />
           <span>Logout</span>
