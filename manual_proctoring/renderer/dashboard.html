@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="container dashboard">
+  <div class="dashboard-header">
+    <h2>Student Dashboard</h2>
+    <button id="logoutButton" class="secondary-btn" onclick="logout()">Logout</button>
+  </div>
+
+  <p id="dashboardMessage" class="status-message" hidden></p>
+
+  <div class="dashboard-card">
+    <p>Name: <span id="studentName">Loading...</span></p>
+    <p>Email: <span id="studentEmail">Loading...</span></p>
+    <p>Exam: <span id="examName">Loading...</span></p>
+  </div>
+
+  <button class="start-btn" onclick="startExam()">Start Exam</button>
+</div>
+
+<script src="js/dashboard.js"></script>
+</body>
+</html>

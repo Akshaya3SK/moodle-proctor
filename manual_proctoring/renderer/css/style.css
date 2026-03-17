@@ -1,0 +1,180 @@
+body{
+ font-family: Arial, sans-serif;
+ background:#f4f6f9;
+ margin:0;
+ padding:0;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ height:100vh;
+}
+
+.container{
+ background:white;
+ padding:40px;
+ border-radius:10px;
+ box-shadow:0 4px 10px rgba(0,0,0,0.1);
+ width:400px;
+ text-align:center;
+}
+
+h2{
+ margin-bottom:20px;
+}
+
+input{
+ width:90%;
+ padding:10px;
+ margin:10px 0;
+ border-radius:5px;
+ border:1px solid #ccc;
+}
+
+button{
+ background:#007bff;
+ color:white;
+ border:none;
+ padding:10px 20px;
+ border-radius:5px;
+ cursor:pointer;
+}
+
+button:hover{
+ background:#0056b3;
+}
+
+button:disabled{
+ background:#7aa7e0;
+ cursor:not-allowed;
+}
+
+.status-message{
+ min-height:24px;
+ margin:10px auto;
+ width:90%;
+ font-size:14px;
+ font-weight:600;
+}
+
+.status-message.error{
+ color:#b42318;
+}
+
+.status-message.info{
+ color:#175cd3;
+}
+
+/* dashboard */
+
+.dashboard{
+ text-align:center;
+}
+
+.dashboard-header{
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ gap:16px;
+}
+
+.dashboard-card{
+ background:#f7f9fc;
+ border:1px solid #dfe6ef;
+ border-radius:10px;
+ padding:18px;
+ margin:16px 0 24px;
+ text-align:left;
+}
+
+.start-btn{
+ background:#28a745;
+ font-size:18px;
+ padding:12px 30px;
+}
+
+.start-btn:hover{
+ background:#1e7e34;
+}
+
+/* exam page */
+
+.exam-container{
+ width:90%;
+ height:90vh;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ gap:16px;
+}
+
+.top-bar{
+ width:100%;
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ padding:10px;
+ background:#222;
+ color:white;
+ border-radius:10px;
+}
+
+.exam-meta{
+ display:flex;
+ gap:12px;
+ margin-top:6px;
+ font-size:14px;
+ color:#d5d7da;
+}
+
+.exam-actions{
+ width:100%;
+ display:flex;
+ justify-content:flex-end;
+}
+
+.video-box{
+
+ position: fixed;
+ bottom: 20px;
+ right: 20px;
+
+ border:3px solid #333;
+ border-radius:8px;
+ overflow:hidden;
+
+ background:black;
+
+}
+
+video{
+
+ width:220px;
+ height:160px;
+ object-fit:cover;
+
+}
+
+.secondary-btn{
+ background:#475467;
+}
+
+.secondary-btn:hover{
+ background:#344054;
+}
+
+.completion-screen{
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ height:100vh;
+ width:100%;
+ background:#f4f6f9;
+}
+
+.completion-card{
+ background:white;
+ padding:40px;
+ border-radius:12px;
+ box-shadow:0 4px 10px rgba(0,0,0,0.1);
+ text-align:center;
+}
