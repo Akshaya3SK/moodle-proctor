@@ -6,6 +6,12 @@ let currentAttempt = null
 let isSubmitting = false
 let visibilityViolationLogged = false
 let blurViolationLogged = false
+let audioContext = null
+let audioUnlocked = false
+
+const MAX_WARNINGS = 15
+const NETWORK_APP_WARNING_COOLDOWN_MS = 5000
+const recentBlockedAppWarnings = new Map()
 
 function setExamStatus(message, type = 'info') {
   const status = document.getElementById('examMessage')
@@ -27,6 +33,71 @@ function formatDuration(totalSeconds) {
 
 function updateViolationCount(count) {
   document.getElementById('violationCount').innerText = String(count || 0)
+}
+
+function ensureAudioContext() {
+  if (!window.AudioContext && !window.webkitAudioContext) {
+    return null
+  }
+
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    audioContext = new AudioContextClass()
+  }
+
+  return audioContext
+}
+
+async function unlockAlertAudio() {
+  const context = ensureAudioContext()
+
+  if (!context || audioUnlocked) {
+    return
+  }
+
+  try {
+    if (context.state === 'suspended') {
+      await context.resume()
+    }
+
+    audioUnlocked = context.state === 'running'
+  } catch (error) {
+    console.error('Failed to unlock alert audio:', error)
+  }
+}
+
+function registerAudioUnlockHandlers() {
+  const unlock = () => {
+    unlockAlertAudio()
+  }
+
+  window.addEventListener('pointerdown', unlock, { passive: true })
+  window.addEventListener('keydown', unlock, { passive: true })
+}
+
+function playWarningBeep() {
+  const context = ensureAudioContext()
+
+  if (!context || context.state !== 'running') {
+    return
+  }
+
+  const startAt = context.currentTime
+  const envelope = context.createGain()
+  envelope.connect(context.destination)
+  envelope.gain.setValueAtTime(0.001, startAt)
+  envelope.gain.exponentialRampToValueAtTime(0.5, startAt + 0.01)
+  envelope.gain.exponentialRampToValueAtTime(0.001, startAt + 0.45)
+
+  ;[1200, 900, 1200].forEach((frequency, index) => {
+    const oscillator = context.createOscillator()
+    const segmentStart = startAt + index * 0.15
+    oscillator.type = 'square'
+    oscillator.frequency.setValueAtTime(frequency, segmentStart)
+    oscillator.connect(envelope)
+    oscillator.start(segmentStart)
+    oscillator.stop(segmentStart + 0.12)
+  })
 }
 
 function renderExamHeader(student) {
@@ -67,6 +138,10 @@ function releaseExamResources() {
   if (window.electronAPI?.exitFullscreen) {
     window.electronAPI.exitFullscreen()
   }
+
+  if (window.electronAPI?.stopExamMonitoring) {
+    window.electronAPI.stopExamMonitoring()
+  }
 }
 
 function renderCompletionScreen(reasonLabel) {
@@ -87,7 +162,8 @@ function finishExamUI(reason) {
   const messageByReason = {
     manual_submit: 'Your exam has been submitted successfully.',
     timer_expired: 'Time is up. Your exam has been submitted automatically.',
-    left_exam: 'Leaving the exam submitted your attempt automatically.'
+    left_exam: 'Leaving the exam submitted your attempt automatically.',
+    warning_limit_reached: `The exam was terminated permanently after reaching ${MAX_WARNINGS} warnings.`
   }
 
   renderCompletionScreen(messageByReason[reason] || 'Your exam session has ended successfully.')
@@ -116,6 +192,12 @@ async function reportViolation(type, detail) {
     if (response.ok && data.attempt) {
       currentAttempt = data.attempt
       updateViolationCount(data.attempt.violationCount)
+      playWarningBeep()
+
+      if (data.attempt.status === 'submitted') {
+        setExamStatus(data.message || `Exam terminated after reaching ${MAX_WARNINGS} warnings.`, 'error')
+        finishExamUI(data.attempt.submissionReason || 'warning_limit_reached')
+      }
     }
   } catch (error) {
     console.error('Failed to report violation:', error)
@@ -175,6 +257,11 @@ async function startExamAttempt() {
   currentAttempt = data.attempt
   updateViolationCount(data.attempt.violationCount)
   examStarted = true
+
+  if (window.electronAPI?.startExamMonitoring) {
+    window.electronAPI.startExamMonitoring()
+  }
+
   return true
 }
 
@@ -201,6 +288,13 @@ async function loadExam() {
     }
 
     renderExamHeader(data.student)
+
+    const cameraReady = await startCamera()
+
+    if (!cameraReady) {
+      updateSubmissionButton(true, 'Blocked')
+      return
+    }
 
     const started = await startExamAttempt()
 
@@ -261,12 +355,19 @@ async function startCamera() {
   const video = document.getElementById('video')
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setExamStatus('Camera access is not supported in this environment.', 'error')
-    await reportViolation('camera_unavailable', 'Camera API is not supported in this environment.')
-    return
+    setExamStatus('A working camera is required before the exam can start.', 'error')
+    return false
   }
 
   try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const hasVideoInput = devices.some(device => device.kind === 'videoinput')
+
+    if (!hasVideoInput) {
+      setExamStatus('No camera was detected. Connect a working camera to start the exam.', 'error')
+      return false
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: false
@@ -274,11 +375,25 @@ async function startCamera() {
 
     video.srcObject = stream
     setExamStatus('Camera connected. Good luck!', 'info')
+    return true
   } catch (error) {
     console.error('Camera error:', error)
-    setExamStatus('Please allow camera permission before starting the exam.', 'error')
-    await reportViolation('camera_blocked', 'Camera permission was denied or unavailable.')
+    setExamStatus('The exam cannot start because the camera is unavailable or not working properly.', 'error')
+    return false
   }
+}
+
+function shouldLogBlockedProcess(processName) {
+  const key = String(processName || '').toLowerCase()
+  const previousLoggedAt = recentBlockedAppWarnings.get(key) || 0
+  const now = Date.now()
+
+  if (now - previousLoggedAt < NETWORK_APP_WARNING_COOLDOWN_MS) {
+    return false
+  }
+
+  recentBlockedAppWarnings.set(key, now)
+  return true
 }
 
 async function goBackToDashboard() {
@@ -349,6 +464,26 @@ function registerExamGuards() {
       reportViolation('fullscreen_exit', 'Candidate exited fullscreen mode during the exam.')
     })
   }
+
+  if (window.electronAPI?.onNetworkAppBlocked) {
+    window.electronAPI.onNetworkAppBlocked(processes => {
+      if (!examStarted || examSubmitted) {
+        return
+      }
+
+      const uniqueProcesses = Array.isArray(processes)
+        ? processes.filter(processName => shouldLogBlockedProcess(processName))
+        : []
+
+      if (uniqueProcesses.length === 0) {
+        return
+      }
+
+      const blockedList = uniqueProcesses.join(', ')
+      setExamStatus(`Blocked network app detected and closed: ${blockedList}. This activity has been recorded.`, 'error')
+      reportViolation('blocked_network_app', `Detected and closed blocked application(s): ${blockedList}.`)
+    })
+  }
 }
 
 window.addEventListener('beforeunload', () => {
@@ -361,11 +496,12 @@ window.addEventListener('beforeunload', () => {
 
 window.addEventListener('load', async () => {
   registerExamGuards()
+  registerAudioUnlockHandlers()
+  await unlockAlertAudio()
 
   if (window.electronAPI?.startFullscreen) {
     window.electronAPI.startFullscreen()
   }
 
   await loadExam()
-  await startCamera()
 })
