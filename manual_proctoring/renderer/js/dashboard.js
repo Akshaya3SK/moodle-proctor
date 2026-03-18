@@ -10,6 +10,35 @@ function setStatus(message, type = 'info') {
   status.innerText = message || ''
 }
 
+function formatLabel(value) {
+  return String(value || '')
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function renderAttemptSummary(attempt) {
+  const attemptStatusElement = document.getElementById('attemptStatus')
+  const attemptWarningsElement = document.getElementById('attemptWarnings')
+  const attemptSubmissionReasonElement = document.getElementById('attemptSubmissionReason')
+
+  if (!attemptStatusElement || !attemptWarningsElement || !attemptSubmissionReasonElement) {
+    return
+  }
+
+  const status = attempt?.status || 'not_started'
+  const warningCount = Number(attempt?.violationCount || 0)
+  const maxWarnings = Number(attempt?.maxWarnings || 15)
+  const submissionReason = attempt?.submissionReason
+
+  attemptStatusElement.innerText = formatLabel(status) || 'Not Started'
+  attemptWarningsElement.innerText = `${warningCount} / ${maxWarnings}`
+  attemptSubmissionReasonElement.innerText = submissionReason
+    ? formatLabel(submissionReason)
+    : 'Not submitted'
+}
+
 async function loadDashboard() {
   setStatus('Loading your exam details...', 'info')
 
@@ -30,6 +59,18 @@ async function loadDashboard() {
     document.getElementById('studentName').innerText = data.student.name
     document.getElementById('studentEmail').innerText = data.student.email
     document.getElementById('examName').innerText = data.student.exam
+    renderAttemptSummary(data.attempt)
+
+    if (data.attempt?.status === 'submitted') {
+      setStatus('This exam attempt has already been submitted.', 'info')
+      return
+    }
+
+    if (data.attempt?.status === 'in_progress') {
+      setStatus('Your exam is already in progress. You can continue when ready.', 'info')
+      return
+    }
+
     setStatus('You are ready to start the exam.', 'info')
   } catch (error) {
     setStatus('Could not reach the backend. Make sure the server is running.', 'error')
