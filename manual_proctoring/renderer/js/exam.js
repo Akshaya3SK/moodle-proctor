@@ -331,12 +331,76 @@ function releaseExamResources() {
   }
 }
 
-function renderCompletionScreen(reasonLabel) {
+function formatCompletionLabel(value, fallback = 'Not available') {
+  if (!value) {
+    return fallback
+  }
+
+  return String(value)
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function formatCompletionTimestamp(timestamp) {
+  if (!timestamp) {
+    return 'Not available'
+  }
+
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Not available'
+  }
+
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+function renderCompletionScreen(reasonLabel, attempt = {}) {
+  const warningCount = Number(attempt.violationCount || 0)
+  const maxWarnings = Number(attempt.maxWarnings || MAX_WARNINGS)
+  const submissionReason = formatCompletionLabel(
+    attempt.submissionReason,
+    formatCompletionLabel(reasonLabel, 'Completed')
+  )
+  const submittedAt = formatCompletionTimestamp(attempt.submittedAt)
+  const shouldContactInvigilator = [
+    'left_exam',
+    'warning_limit_reached'
+  ].includes(attempt.submissionReason)
+
   document.body.innerHTML = `
     <div class="completion-screen">
       <div class="completion-card">
         <h1>Exam Completed</h1>
-        <p>${reasonLabel}</p>
+        <p>${escapeHtml(reasonLabel)}</p>
+        <div style="margin-top: 20px; text-align: left; display: grid; gap: 12px;">
+          <div>
+            <strong>Submission reason:</strong>
+            <span>${escapeHtml(submissionReason)}</span>
+          </div>
+          <div>
+            <strong>Submitted at:</strong>
+            <span>${escapeHtml(submittedAt)}</span>
+          </div>
+          <div>
+            <strong>Warnings used:</strong>
+            <span>${escapeHtml(`${warningCount} / ${maxWarnings}`)}</span>
+          </div>
+        </div>
+        <p style="margin-top: 20px; color: #475467;">
+          ${shouldContactInvigilator
+            ? 'Please contact the invigilator if you need clarification about this submission.'
+            : 'If you have any questions, please contact the invigilator.'}
+        </p>
       </div>
     </div>
   `
@@ -353,7 +417,10 @@ function finishExamUI(reason) {
     warning_limit_reached: `The exam was terminated permanently after reaching ${MAX_WARNINGS} warnings.`
   }
 
-  renderCompletionScreen(messageByReason[reason] || 'Your exam session has ended successfully.')
+  renderCompletionScreen(
+    messageByReason[reason] || 'Your exam session has ended successfully.',
+    currentAttempt || { submissionReason: reason }
+  )
 }
 
 async function reportViolation(type, detail) {
