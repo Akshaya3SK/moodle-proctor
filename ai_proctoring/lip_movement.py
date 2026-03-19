@@ -27,6 +27,7 @@ MAR_THRESHOLD      = C.LIP_MAR_THRESHOLD
 TALKING_SEC        = C.TALKING_SEC
 EVENT_COOLDOWN_SEC = C.LIP_EVENT_COOLDOWN_SEC
 MOVEMENT_STD_THRESH = C.LIP_MOVEMENT_STD_THRESHOLD
+MIN_TALKING_CYCLES = C.LIP_MIN_TALKING_CYCLES
 HISTORY_LEN        = 30     # Frames of MAR history for smoothing
 
 
@@ -38,6 +39,8 @@ class LipMovementMonitor:
         self._talk_start     = None
         self._last_event_time = 0.0
         self._mar_history    = deque(maxlen=HISTORY_LEN)
+        self._movement_cycles = 0
+        self._prev_delta_sign = 0
         self.current_mar     = 0.0
         self.status          = "CLOSED"
         print("[LipMonitor] Initialised (MAR-based lip movement detection).")
@@ -51,9 +54,10 @@ class LipMovementMonitor:
         smooth_mar       = float(np.mean(self._mar_history))
         mar_std          = float(np.std(self._mar_history)) if len(self._mar_history) > 3 else 0.0
         self.current_mar = round(smooth_mar, 4)
+        self._update_movement_cycles()
 
         mouth_open = smooth_mar > MAR_THRESHOLD
-        talking = mouth_open and mar_std >= MOVEMENT_STD_THRESH
+        talking = mouth_open and mar_std >= MOVEMENT_STD_THRESH and self._movement_cycles >= MIN_TALKING_CYCLES
         self.status = "talking" if talking else ("open" if mouth_open else "closed")
 
         self._handle_talking(talking, frame_bgr, annotated_bgr, frame_index, smooth_mar)
@@ -73,6 +77,18 @@ class LipMovementMonitor:
         vertical   = np.linalg.norm(top - bottom)
         horizontal = np.linalg.norm(left - right) + 1e-6
         return vertical / horizontal
+
+    def _update_movement_cycles(self):
+        if len(self._mar_history) < 4:
+            return
+        recent = list(self._mar_history)[-4:]
+        delta = recent[-1] - recent[-2]
+        sign = 1 if delta > 0.001 else -1 if delta < -0.001 else 0
+        if sign != 0 and self._prev_delta_sign != 0 and sign != self._prev_delta_sign:
+            self._movement_cycles += 1
+        self._prev_delta_sign = sign
+        if len(self._mar_history) == self._mar_history.maxlen and np.std(self._mar_history) < MOVEMENT_STD_THRESH * 0.5:
+            self._movement_cycles = 0
 
     def _handle_talking(self, mouth_open, frame, annotated, frame_index, mar):
         now = time.time()

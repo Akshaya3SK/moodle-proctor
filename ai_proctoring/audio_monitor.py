@@ -20,11 +20,17 @@ from violation_logger import ViolationLogger, ViolationType
 # ─── Tuning ───────────────────────────────────────────────────────────────────
 SAMPLE_RATE        = 16000
 CHUNK_SIZE         = 1024
-SOUND_THRESHOLD    = 1500    # RMS amplitude — raise if too sensitive
+SOUND_THRESHOLD    = C.AUDIO_ABS_THRESHOLD
 SUSTAINED_SEC      = C.AUDIO_SUSTAINED_SEC
-SPIKE_WINDOW_SEC   = 10.0    # Window to count repeated spikes
+SPIKE_WINDOW_SEC   = C.AUDIO_SPIKE_WINDOW_SEC
 SPIKE_COUNT_LIMIT  = C.AUDIO_SPIKE_LIMIT
-EVENT_COOLDOWN_SEC = 6.0
+SPIKE_MIN_GAP_SEC  = C.AUDIO_SPIKE_MIN_GAP_SEC
+EVENT_COOLDOWN_SEC = C.AUDIO_EVENT_COOLDOWN_SEC
+CALIBRATION_SEC    = C.AUDIO_CALIBRATION_SEC
+BASELINE_ALPHA     = C.AUDIO_BASELINE_ALPHA
+TRIGGER_MULTIPLIER = C.AUDIO_TRIGGER_MULTIPLIER
+MIN_TRIGGER_RMS    = C.AUDIO_MIN_TRIGGER_RMS
+SMOOTHING_ALPHA    = C.AUDIO_SMOOTHING_ALPHA
 
 
 class AudioMonitor:
@@ -41,9 +47,13 @@ class AudioMonitor:
         self._sound_start     = None
         self._spike_times     = deque()
         self._last_event_time = 0.0
+        self._last_spike_time = 0.0
         self._was_loud        = False
+        self._started_at      = time.time()
+        self._baseline_rms    = 0.0
+        self._smoothed_rms    = 0.0
         self.current_rms      = 0
-        self.status           = "QUIET"
+        self.status           = "CALIBRATING"
 
         self._try_start()
 
@@ -94,19 +104,26 @@ class AudioMonitor:
                 raw  = self._stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 data = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
                 rms  = float(np.sqrt(np.mean(data ** 2)))
-                self.current_rms = int(rms)
-                self._evaluate(rms)
+                self._smoothed_rms = (
+                    rms if self._smoothed_rms == 0.0
+                    else (SMOOTHING_ALPHA * rms + (1.0 - SMOOTHING_ALPHA) * self._smoothed_rms)
+                )
+                self.current_rms = int(self._smoothed_rms)
+                self._evaluate(self._smoothed_rms)
             except Exception:
                 time.sleep(0.05)
 
     def _evaluate(self, rms: float):
         now   = time.time()
-        loud  = rms > SOUND_THRESHOLD
+        self._update_baseline(rms, now)
+        trigger_threshold = max(SOUND_THRESHOLD, self._baseline_rms * TRIGGER_MULTIPLIER, MIN_TRIGGER_RMS)
+        loud  = rms > trigger_threshold
 
         if loud:
             self.status = "SOUND_DETECTED"
-            if not self._was_loud:
+            if not self._was_loud and now - self._last_spike_time >= SPIKE_MIN_GAP_SEC:
                 self._spike_times.append(now)
+                self._last_spike_time = now
             while self._spike_times and now - self._spike_times[0] > SPIKE_WINDOW_SEC:
                 self._spike_times.popleft()
 
@@ -128,6 +145,8 @@ class AudioMonitor:
                     extra           = {
                         "reason":       reason,
                         "rms":          self.current_rms,
+                        "baseline_rms": int(self._baseline_rms),
+                        "threshold":    int(trigger_threshold),
                         "spike_count":  len(self._spike_times),
                         "elapsed_sec":  round(elapsed, 2),
                     },
@@ -140,3 +159,16 @@ class AudioMonitor:
             self.status       = "QUIET"
             self._sound_start = None
             self._was_loud    = False
+
+    def _update_baseline(self, rms: float, now: float):
+        if self._baseline_rms == 0.0:
+            self._baseline_rms = rms
+            return
+        # During calibration or quiet periods, adapt to room noise gradually.
+        if now - self._started_at < CALIBRATION_SEC or rms < max(SOUND_THRESHOLD, self._baseline_rms * 1.6):
+            self._baseline_rms = (
+                BASELINE_ALPHA * rms +
+                (1.0 - BASELINE_ALPHA) * self._baseline_rms
+            )
+        if now - self._started_at < CALIBRATION_SEC:
+            self.status = "CALIBRATING"

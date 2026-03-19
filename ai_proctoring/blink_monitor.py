@@ -26,6 +26,9 @@ MEASURE_WINDOW_SEC   = 60.0   # Rolling window for BPM calculation
 LOW_BLINK_THRESHOLD  = C.LOW_BLINK_THRESHOLD
 HIGH_BLINK_THRESHOLD = C.HIGH_BLINK_THRESHOLD
 MIN_OBSERVATION_SEC  = C.BLINK_MIN_OBSERVATION_SEC
+LOW_RATE_GRACE_SEC   = C.BLINK_LOW_RATE_GRACE_SEC
+ANOMALY_STREAK_REQ   = C.BLINK_RATE_ANOMALY_STREAK
+BASELINE_SEC         = C.BLINK_BASELINE_SEC
 EVENT_COOLDOWN_SEC   = C.BLINK_EVENT_COOLDOWN_SEC
 
 # MediaPipe FaceLandmarker landmark indices for left & right eye
@@ -61,6 +64,10 @@ class BlinkMonitor:
         self._blink_times    = deque()   # Timestamps of each blink
         self._last_event_time = 0.0
         self._started_at      = time.time()
+        self._ear_samples     = deque(maxlen=240)
+        self._dynamic_threshold = EAR_THRESHOLD
+        self._abnormal_streak  = 0
+        self._baseline_ready   = False
 
         # Public state (read by HUD)
         self.blink_count     = 0
@@ -84,9 +91,10 @@ class BlinkMonitor:
         right_ear = _ear(landmarks, RIGHT_EYE_IDX, w, h)
         ear       = (left_ear + right_ear) / 2.0
         self.current_ear = round(ear, 3)
+        self._update_baseline(left_ear, right_ear, ear)
 
         # Detect blink
-        if ear < EAR_THRESHOLD:
+        if self._is_eye_closed(left_ear, right_ear, ear):
             self._closed_frames += 1
         else:
             if self._closed_frames >= EAR_CONSEC_FRAMES:
@@ -102,7 +110,8 @@ class BlinkMonitor:
             "blink_count": self.blink_count,
             "ear": self.current_ear,
             "status": self.status,
-            "anomaly": self.status != "NORMAL" and self.blinks_per_min > 0.0,
+            "threshold": round(self._dynamic_threshold, 3),
+            "anomaly": self.status != "NORMAL" and self._abnormal_streak >= ANOMALY_STREAK_REQ and self.blinks_per_min > 0.0,
         }
 
     # ── Private ───────────────────────────────────────────────────────────────
@@ -111,6 +120,24 @@ class BlinkMonitor:
         now = time.time()
         self.blink_count += 1
         self._blink_times.append(now)
+
+    def _update_baseline(self, left_ear, right_ear, ear):
+        now = time.time()
+        if abs(left_ear - right_ear) < 0.08 and ear > EAR_THRESHOLD:
+            self._ear_samples.append(ear)
+        if now - self._started_at >= BASELINE_SEC and self._ear_samples:
+            baseline = float(np.percentile(self._ear_samples, 65))
+            self._dynamic_threshold = max(0.14, min(EAR_THRESHOLD, baseline * 0.72))
+            self._baseline_ready = True
+
+    def _is_eye_closed(self, left_ear, right_ear, ear) -> bool:
+        threshold = self._dynamic_threshold if self._baseline_ready else EAR_THRESHOLD
+        # Glasses glare often corrupts only one eye. Require both eyes to be consistently low.
+        return (
+            ear < threshold and
+            max(left_ear, right_ear) < threshold * 1.12 and
+            abs(left_ear - right_ear) < 0.09
+        )
 
     def _update_rate(self):
         now = time.time()
@@ -131,15 +158,26 @@ class BlinkMonitor:
         bpm = self.blinks_per_min
 
         if bpm == 0.0:
+            self.status = "CALIBRATING" if not self._baseline_ready else "NORMAL"
             return   # Not enough data
 
         # Moderate: only flag if outside normal range
-        if bpm < LOW_BLINK_THRESHOLD:
+        if now - self._started_at < LOW_RATE_GRACE_SEC:
+            low_blink = False
+        else:
+            low_blink = bpm < LOW_BLINK_THRESHOLD
+
+        if low_blink:
             self.status = "LOW_BLINK"
         elif bpm > HIGH_BLINK_THRESHOLD:
             self.status = "HIGH_BLINK"
         else:
             self.status = "NORMAL"
+            self._abnormal_streak = 0
+            return
+
+        self._abnormal_streak += 1
+        if self._abnormal_streak < ANOMALY_STREAK_REQ:
             return
 
         if now - self._last_event_time < EVENT_COOLDOWN_SEC:
@@ -168,6 +206,7 @@ class BlinkMonitor:
             f"EAR: {ear:.3f}",
             f"Blinks: {self.blink_count}",
             f"BPM: {self.blinks_per_min:.1f}",
+            f"Thr: {self._dynamic_threshold:.3f}",
             f"Eye: {self.status}",
         ]
         x = annotated.shape[1] - 260

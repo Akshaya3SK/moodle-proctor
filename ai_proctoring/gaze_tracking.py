@@ -24,6 +24,7 @@ YAW_THRESHOLD_DEG        = C.YAW_THRESHOLD_DEG
 PITCH_UP_THRESHOLD_DEG   = C.PITCH_UP_THRESHOLD_DEG
 PITCH_DOWN_THRESHOLD_DEG = C.PITCH_DOWN_THRESHOLD_DEG
 EVENT_COOLDOWN_SEC       = C.GAZE_EVENT_COOLDOWN_SEC
+AWAY_FRAME_STREAK        = C.GAZE_AWAY_FRAME_STREAK
 
 PNP_LANDMARK_IDS = [1, 152, 263, 33, 287, 57]
 
@@ -68,6 +69,7 @@ class GazeTracker:
         self._look_away_start   = None
         self._look_away_violated = False
         self._last_event_time   = 0.0
+        self._away_frames       = 0
 
         print("[GazeTracker] Initialised (MediaPipe Tasks FaceLandmarker + PnP solver).")
 
@@ -93,18 +95,20 @@ class GazeTracker:
             pitch < -PITCH_UP_THRESHOLD_DEG or   # looking up
             pitch > PITCH_DOWN_THRESHOLD_DEG      # extreme down (phone under desk etc)
         )
+        self._away_frames = self._away_frames + 1 if looking_away else 0
+        stable_away = self._away_frames >= AWAY_FRAME_STREAK
 
         direction = self._gaze_direction(yaw, pitch)
-        self._handle_look_away(looking_away, frame_bgr, annotated_bgr,
+        self._handle_look_away(stable_away, frame_bgr, annotated_bgr,
                                frame_index, yaw, pitch, direction)
-        self._draw_pose_info(annotated_bgr, yaw, pitch, direction, looking_away)
+        self._draw_pose_info(annotated_bgr, yaw, pitch, direction, stable_away)
 
         return {
-            "gaze_status":   "looking_away" if looking_away else "forward",
+            "gaze_status":   "looking_away" if stable_away else "forward",
             "gaze_direction": direction,
             "yaw":           round(yaw,   2),
             "pitch":         round(pitch, 2),
-            "looking_away":  looking_away,
+            "looking_away":  stable_away,
             "landmarks":     landmarks,
         }
 
