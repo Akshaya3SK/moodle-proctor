@@ -128,6 +128,7 @@ class SessionState:
         self.fps_timer     = time.time()
         self.display_fps   = 0.0
         self.last_face_bbox = None
+        self.exposure_windows = {}
 
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
@@ -218,6 +219,14 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
             print(f"[WARN] Detector '{name}' failed on frame {state.frame_count}: {exc}")
             traceback.print_exc()
             return default
+
+    def exposure_gate(key: str, active: bool, threshold_sec: float) -> bool:
+        now = time.time()
+        if not active:
+            state.exposure_windows.pop(key, None)
+            return False
+        started_at = state.exposure_windows.setdefault(key, now)
+        return (now - started_at) >= threshold_sec
 
     # FPS counter
     if state.frame_count % 30 == 0:
@@ -338,39 +347,39 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
     violations = []
     advisories = []
 
-    if face_result.get("face_count", 1) == 0:
+    if exposure_gate("no_face", face_result.get("face_count", 1) == 0, C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("No face detected")
-    if face_result.get("face_count", 1) > 1:
+    if exposure_gate("multiple_faces", face_result.get("face_count", 1) > 1, C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("Multiple faces detected")
 
-    if gaze_result.get("looking_away"):
+    if exposure_gate("looking_away", gaze_result.get("looking_away", False), C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("Looking away from screen")
 
-    if phone_result.get("phone_detected"):
+    if exposure_gate("phone_detected", phone_result.get("phone_detected", False), C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("Phone detected")
 
-    if object_result.get("count", 0) > 0:
+    if exposure_gate("forbidden_object", object_result.get("count", 0) > 0, C.LIVE_WARNING_EXPOSURE_SEC):
         labels = object_result.get("labels", [])
         detail = f"Forbidden object detected: {', '.join(labels)}" if labels else "Forbidden object detected"
         violations.append(detail)
 
-    if C.ADVISORY_BLINK_ENABLED and blink_result.get("anomaly"):
+    if C.ADVISORY_BLINK_ENABLED and exposure_gate("blink_anomaly", blink_result.get("anomaly", False), C.LIVE_ADVISORY_EXPOSURE_SEC):
         advisories.append("Abnormal blink pattern observed")
 
-    if C.ADVISORY_LIP_ENABLED and lip_result.get("talking"):
+    if C.ADVISORY_LIP_ENABLED and exposure_gate("lip_talking", lip_result.get("talking", False), C.LIVE_ADVISORY_EXPOSURE_SEC):
         advisories.append("Possible speech activity observed")
 
-    if light_result.get("status") == "blocked":
+    if exposure_gate("camera_blocked", light_result.get("status") == "blocked", C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("Camera may be blocked")
-    if light_result.get("status") == "too_dark":
+    if exposure_gate("too_dark", light_result.get("status") == "too_dark", C.LIVE_ADVISORY_EXPOSURE_SEC):
         advisories.append("Lighting too dark for reliable monitoring")
-    if C.ADVISORY_LIGHTING_ENABLED and light_result.get("light_change"):
+    if C.ADVISORY_LIGHTING_ENABLED and exposure_gate("lighting_change", light_result.get("light_change", False), C.LIVE_ADVISORY_EXPOSURE_SEC):
         advisories.append("Lighting changed sharply")
 
-    if C.ADVISORY_MOTION_ENABLED and motion_result.get("motion_detected"):
+    if C.ADVISORY_MOTION_ENABLED and exposure_gate("background_motion", motion_result.get("motion_detected", False), C.LIVE_ADVISORY_EXPOSURE_SEC):
         advisories.append("Background movement detected")
 
-    if identity_result.get("identity_status") == "mismatch":
+    if exposure_gate("identity_mismatch", identity_result.get("identity_status") == "mismatch", C.LIVE_WARNING_EXPOSURE_SEC):
         violations.append("Identity could not be verified")
 
     return {
