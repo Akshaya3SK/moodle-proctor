@@ -247,6 +247,12 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
         )
         landmarks   = gaze_result.get("landmarks")
 
+    gaze_response = {
+        key: value
+        for key, value in gaze_result.items()
+        if key != "landmarks"
+    }
+
     # ── 3. Phone ───────────────────────────────────────────────────────────────
     phone_result = {}
     if phone_detector:
@@ -333,51 +339,6 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
         cv2.imshow("AI Proctoring System v3", annotated)
         cv2.waitKey(1)
 
-    # ── Build response for the frontend ───────────────────────────────────────
-        # ── Build response for the frontend ───────────────────────────────────────
-        violations = []
-
-        # 1. Face presence
-        if face_result.get("face_count", 1) == 0:
-            violations.append("No face detected")
-        if face_result.get("face_count", 1) > 1:
-            violations.append("Multiple faces detected")
-
-        # 2. Gaze
-        if gaze_result.get("gaze_status") == "looking_away":
-            violations.append("Looking away from screen")
-
-        # 3. Phone
-        if phone_result.get("phone_detected"):
-            violations.append("Phone detected")
-
-        # 4. Forbidden objects
-        if object_result.get("count", 0) > 0:
-            labels = object_result.get("labels", [])
-            detail = f"Forbidden object detected: {', '.join(labels)}" if labels else "Forbidden object detected"
-            violations.append(detail)
-
-        # 5. Blink anomaly
-        if blink_result.get("anomaly"):
-            violations.append("Abnormal blink rate detected")
-
-        # 6. Lip movement / talking
-        if lip_result.get("lip_status") == "talking":
-            violations.append("Talking detected")
-
-        # 7. Lighting / camera blocked
-        if light_result.get("status") == "blocked":
-            violations.append("Camera may be blocked")
-        if light_result.get("status") == "too_dark":
-            violations.append("Lighting too dark — face not visible")
-
-        # 8. Background motion
-        if motion_result.get("status") == "motion_detected":
-            violations.append("Background movement detected")
-
-        # 9. Identity mismatch
-        if identity_result.get("identity_status") == "mismatch":
-            violations.append("Identity could not be verified")
 
     violations = []
 
@@ -422,7 +383,7 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
         "message":    violations[0] if violations else "OK",
         "details": {
             "face":     face_result,
-            "gaze":     gaze_result,
+            "gaze":     gaze_response,
             "phone":    phone_result,
             "blink":    blink_result,
             "lip":      lip_result,
