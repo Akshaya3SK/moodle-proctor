@@ -2,10 +2,11 @@
 AI Proctoring System v3 — WebSocket Edition
 Replaces cv2.VideoCapture with frames streamed from the browser.
 """
-import asyncio, base64, cv2, numpy as np, time, sys, signal
+import asyncio, base64, cv2, numpy as np, time, sys, signal, traceback
 from datetime import datetime
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketDisconnect
 
 import config as C
 from violation_logger import ViolationLogger
@@ -67,6 +68,11 @@ async def root():
 @app.get("/health")
 async def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return {}
 
 
 @app.post("/shutdown")
@@ -137,20 +143,63 @@ async def proctor_ws(websocket: WebSocket):
 
     try:
         while True:
-            data      = await websocket.receive_json()
-            img_bytes = base64.b64decode(data["frame"])
-            np_arr    = np.frombuffer(img_bytes, np.uint8)
-            frame     = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            try:
+                data = await websocket.receive_json()
+            except WebSocketDisconnect as exc:
+                print(f"[INFO] Client disconnected normally: code={exc.code}")
+                break
 
-            if frame is None:
-                await websocket.send_json({"error": "bad frame"})
-                continue
+            try:
+                frame_payload = data.get("frame")
+                if not frame_payload:
+                    await websocket.send_json({
+                        "error": "missing_frame",
+                        "message": "Frame payload missing.",
+                        "violations": [],
+                        "flag": False,
+                        "details": {}
+                    })
+                    continue
 
-            result = _process_frame(frame, state)
-            await websocket.send_json(result)
+                img_bytes = base64.b64decode(frame_payload)
+                np_arr = np.frombuffer(img_bytes, np.uint8)
+                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+                if frame is None:
+                    await websocket.send_json({
+                        "error": "bad_frame",
+                        "message": "Unable to decode frame.",
+                        "violations": [],
+                        "flag": False,
+                        "details": {}
+                    })
+                    continue
+
+                result = _process_frame(frame, state)
+                await websocket.send_json(result)
+            except WebSocketDisconnect as exc:
+                print(f"[INFO] Client disconnected during frame processing: code={exc.code}")
+                break
+            except Exception as exc:
+                print(f"[ERROR] Frame processing failed: {exc}")
+                traceback.print_exc()
+                try:
+                    await websocket.send_json({
+                        "error": "processing_failed",
+                        "message": str(exc),
+                        "violations": [],
+                        "flag": False,
+                        "details": {}
+                    })
+                except WebSocketDisconnect:
+                    break
+                except Exception as send_exc:
+                    print(f"[WARN] Failed to send processing error to client: {send_exc}")
+                    break
 
     except Exception as exc:
-        print(f"[WARN] Connection closed: {exc}")
+        print(f"[WARN] Connection closed unexpectedly: {exc}")
+        traceback.print_exc()
     finally:
         print(f"[INFO] Client disconnected. Frames processed: {state.frame_count}")
 
@@ -160,6 +209,16 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
     state.frame_count += 1
     annotated = frame.copy()
     h, w      = frame.shape[:2]
+    detector_errors = {}
+
+    def safe_detector(name: str, default: dict, callback):
+        try:
+            return callback()
+        except Exception as exc:
+            detector_errors[name] = str(exc)
+            print(f"[WARN] Detector '{name}' failed on frame {state.frame_count}: {exc}")
+            traceback.print_exc()
+            return default
 
     # FPS counter
     if state.frame_count % 30 == 0:
@@ -170,54 +229,86 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
     # ── 1. Face ────────────────────────────────────────────────────────────────
     face_result = {}
     if face_monitor:
-        face_result = face_monitor.process(frame, annotated, state.frame_count)
+        face_result = safe_detector(
+            "face_monitor",
+            {},
+            lambda: face_monitor.process(frame, annotated, state.frame_count)
+        )
         state.last_face_bbox = getattr(face_monitor, '_last_bbox', None)
 
     # ── 2. Gaze + landmarks ────────────────────────────────────────────────────
     gaze_result = {}
     landmarks   = None
     if gaze_tracker:
-        gaze_result = gaze_tracker.process(frame, annotated, state.frame_count)
+        gaze_result = safe_detector(
+            "gaze_tracker",
+            {},
+            lambda: gaze_tracker.process(frame, annotated, state.frame_count)
+        )
         landmarks   = gaze_result.get("landmarks")
 
     # ── 3. Phone ───────────────────────────────────────────────────────────────
     phone_result = {}
     if phone_detector:
-        phone_result = phone_detector.process(frame, annotated, state.frame_count)
+        phone_result = safe_detector(
+            "phone_detector",
+            {},
+            lambda: phone_detector.process(frame, annotated, state.frame_count)
+        )
 
     # ── 4. Forbidden objects ───────────────────────────────────────────────────
     object_result = {}
     if object_detector:
-        object_result = object_detector.process(frame, annotated, state.frame_count)
+        object_result = safe_detector(
+            "object_detector",
+            {},
+            lambda: object_detector.process(frame, annotated, state.frame_count)
+        )
 
     # ── 5. Blink rate ──────────────────────────────────────────────────────────
     blink_result = {}
     if blink_monitor and landmarks:
-        blink_result = blink_monitor.process(landmarks, frame, annotated,
-                                              state.frame_count, w, h)
+        blink_result = safe_detector(
+            "blink_monitor",
+            {},
+            lambda: blink_monitor.process(landmarks, frame, annotated, state.frame_count, w, h)
+        )
 
     # ── 6. Lip movement ────────────────────────────────────────────────────────
     lip_result = {}
     if lip_monitor and landmarks:
-        lip_result = lip_monitor.process(landmarks, frame, annotated,
-                                          state.frame_count, w, h)
+        lip_result = safe_detector(
+            "lip_monitor",
+            {},
+            lambda: lip_monitor.process(landmarks, frame, annotated, state.frame_count, w, h)
+        )
 
     # ── 7. Lighting ────────────────────────────────────────────────────────────
     light_result = {}
     if lighting_monitor:
-        light_result = lighting_monitor.process(frame, annotated, state.frame_count)
+        light_result = safe_detector(
+            "lighting_monitor",
+            {},
+            lambda: lighting_monitor.process(frame, annotated, state.frame_count)
+        )
 
     # ── 8. Background motion ───────────────────────────────────────────────────
     motion_result = {}
     if motion_detector:
-        motion_result = motion_detector.process(frame, annotated,
-                                                 state.frame_count, state.last_face_bbox)
+        motion_result = safe_detector(
+            "motion_detector",
+            {},
+            lambda: motion_detector.process(frame, annotated, state.frame_count, state.last_face_bbox)
+        )
 
     # ── 9. Identity ────────────────────────────────────────────────────────────
     identity_result = {}
     if identity_verifier and landmarks:
-        identity_result = identity_verifier.process(landmarks, frame, annotated,
-                                                     state.frame_count, w, h)
+        identity_result = safe_detector(
+            "identity_verifier",
+            {},
+            lambda: identity_verifier.process(landmarks, frame, annotated, state.frame_count, w, h)
+        )
 
     # ── Optional: save annotated preview locally ───────────────────────────────
     if C.SHOW_PREVIEW:
@@ -338,6 +429,7 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
             "lighting": light_result,
             "motion":   motion_result,
             "identity": identity_result,
+            "errors":   detector_errors,
         }
     }
 
