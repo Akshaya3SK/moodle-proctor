@@ -180,7 +180,7 @@ def generate_report(
         if len(events) > 60:
             story.append(Spacer(1, 0.2*cm))
             story.append(Paragraph(
-                f"... and {len(events)-60} more events. See {C_LOG_FILE} for full log.",
+                f"... and {len(events)-60} more events. See {log_path} for full log.",
                 styles["note"]))
 
     story.append(Spacer(1, 0.7*cm))
@@ -240,9 +240,6 @@ def generate_report(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-C_LOG_FILE = "violations.jsonl"
-
 def _load_events(path):
     events = []
     if not os.path.exists(path): return events

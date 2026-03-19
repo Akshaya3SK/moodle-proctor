@@ -12,17 +12,17 @@ Moderate mode: flags only sustained or large-area background motion.
 import cv2
 import time
 import numpy as np
-from collections import deque
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
-MOTION_THRESH      = 25      # Pixel diff threshold
-MOTION_AREA_PCT    = 0.08    # % of frame with motion to trigger flag
-SUSTAINED_SEC      = 2.0     # Sustained background motion before violation
-EVENT_COOLDOWN_SEC = 8.0
+MOTION_THRESH      = C.MOTION_THRESH
+MOTION_AREA_PCT    = C.MOTION_AREA_PCT
+SUSTAINED_SEC      = C.MOTION_SUSTAINED_SEC
+EVENT_COOLDOWN_SEC = C.MOTION_EVENT_COOLDOWN_SEC
 BLUR_KERNEL        = (21, 21)
 
 
@@ -64,6 +64,8 @@ class MotionDetector:
         diff    = cv2.absdiff(self._prev_gray, gray)
         diff    = cv2.bitwise_and(diff, diff, mask=mask)
         _, thresh = cv2.threshold(diff, MOTION_THRESH, 255, cv2.THRESH_BINARY)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, np.ones((3, 3), dtype=np.uint8))
+        thresh = cv2.dilate(thresh, np.ones((3, 3), dtype=np.uint8), iterations=1)
 
         motion_pixels  = np.count_nonzero(thresh)
         total_pixels   = np.count_nonzero(mask)
@@ -74,7 +76,7 @@ class MotionDetector:
 
         now = time.time()
         if motion_pct > MOTION_AREA_PCT:
-            self.status = "MOTION"
+            self.status = "motion_detected"
             if self._motion_start is None:
                 self._motion_start = now
             elapsed = now - self._motion_start
@@ -103,7 +105,11 @@ class MotionDetector:
                 self._last_event_time = now
                 self._motion_start    = None
         else:
-            self.status        = "STILL"
+            self.status        = "still"
             self._motion_start = None
 
-        return {"motion_pct": self.motion_pct, "status": self.status}
+        return {
+            "motion_pct": self.motion_pct,
+            "status": self.status,
+            "motion_detected": self.status == "motion_detected",
+        }

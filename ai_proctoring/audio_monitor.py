@@ -12,19 +12,18 @@ import time
 import threading
 import numpy as np
 from collections import deque
-from datetime import datetime
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
-from utils import capture_screenshot
 
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
 SAMPLE_RATE        = 16000
 CHUNK_SIZE         = 1024
 SOUND_THRESHOLD    = 1500    # RMS amplitude — raise if too sensitive
-SUSTAINED_SEC      = 2.0     # Seconds of continuous sound before violation
+SUSTAINED_SEC      = C.AUDIO_SUSTAINED_SEC
 SPIKE_WINDOW_SEC   = 10.0    # Window to count repeated spikes
-SPIKE_COUNT_LIMIT  = 3       # N spikes in window → violation (moderate)
+SPIKE_COUNT_LIMIT  = C.AUDIO_SPIKE_LIMIT
 EVENT_COOLDOWN_SEC = 6.0
 
 
@@ -42,6 +41,7 @@ class AudioMonitor:
         self._sound_start     = None
         self._spike_times     = deque()
         self._last_event_time = 0.0
+        self._was_loud        = False
         self.current_rms      = 0
         self.status           = "QUIET"
 
@@ -62,6 +62,8 @@ class AudioMonitor:
                 self._pa.terminate()
             except Exception:
                 pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -103,9 +105,8 @@ class AudioMonitor:
 
         if loud:
             self.status = "SOUND_DETECTED"
-            # Track spike times (moderate: count repeated bursts)
-            self._spike_times.append(now)
-            # Prune old spikes outside window
+            if not self._was_loud:
+                self._spike_times.append(now)
             while self._spike_times and now - self._spike_times[0] > SPIKE_WINDOW_SEC:
                 self._spike_times.popleft()
 
@@ -134,6 +135,8 @@ class AudioMonitor:
                 self._last_event_time = now
                 self._sound_start     = None
                 self._spike_times.clear()
+            self._was_loud = True
         else:
             self.status       = "QUIET"
             self._sound_start = None
+            self._was_loud    = False

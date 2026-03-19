@@ -13,15 +13,17 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 
 # ─── Tuning Constants ─────────────────────────────────────────────────────────
-LOOK_AWAY_TIMEOUT_SEC  = 3.0
-YAW_THRESHOLD_DEG      = 25.0
-PITCH_UP_THRESHOLD_DEG = 20.0   # Looking UP is suspicious
-PITCH_DOWN_THRESHOLD_DEG = 40.0 # Looking DOWN is allowed (writing) - only flag extreme down
+LOOK_AWAY_TIMEOUT_SEC    = C.LOOK_AWAY_TIMEOUT_SEC
+YAW_THRESHOLD_DEG        = C.YAW_THRESHOLD_DEG
+PITCH_UP_THRESHOLD_DEG   = C.PITCH_UP_THRESHOLD_DEG
+PITCH_DOWN_THRESHOLD_DEG = C.PITCH_DOWN_THRESHOLD_DEG
+EVENT_COOLDOWN_SEC       = C.GAZE_EVENT_COOLDOWN_SEC
 
 PNP_LANDMARK_IDS = [1, 152, 263, 33, 287, 57]
 
@@ -78,13 +80,13 @@ class GazeTracker:
         result = self.face_mesh.detect(mp_img)
 
         if not result.face_landmarks:
-            return {"gaze_status": "NO_FACE", "yaw": None, "pitch": None}
+            return {"gaze_status": "no_face", "gaze_direction": "NO_FACE", "yaw": None, "pitch": None, "looking_away": False}
 
         landmarks = result.face_landmarks[0]
         yaw, pitch = self._estimate_head_pose(landmarks, w, h, annotated_bgr)
 
         if yaw is None:
-            return {"gaze_status": "POSE_FAIL", "yaw": None, "pitch": None}
+            return {"gaze_status": "pose_fail", "gaze_direction": "POSE_FAIL", "yaw": None, "pitch": None, "looking_away": False}
 
         looking_away = (
             abs(yaw) > YAW_THRESHOLD_DEG or      # looking left/right
@@ -98,11 +100,12 @@ class GazeTracker:
         self._draw_pose_info(annotated_bgr, yaw, pitch, direction, looking_away)
 
         return {
-            "gaze_status":  direction,
-            "yaw":          round(yaw,   2),
-            "pitch":        round(pitch, 2),
-            "looking_away": looking_away,
-            "landmarks":    landmarks,    # passed to BlinkMonitor
+            "gaze_status":   "looking_away" if looking_away else "forward",
+            "gaze_direction": direction,
+            "yaw":           round(yaw,   2),
+            "pitch":         round(pitch, 2),
+            "looking_away":  looking_away,
+            "landmarks":     landmarks,
         }
 
     # ── Private helpers ───────────────────────────────────────────────────────
@@ -176,7 +179,7 @@ class GazeTracker:
                 (0, 0, 220), 2, cv2.LINE_AA,
             )
             if elapsed >= LOOK_AWAY_TIMEOUT_SEC and not self._look_away_violated:
-                if now - self._last_event_time >= 5.0:
+                if now - self._last_event_time >= EVENT_COOLDOWN_SEC:
                     path = capture_screenshot(frame, frame_index, "look_away")
                     self.logger.log(
                         violation_type  = ViolationType.LOOKING_AWAY,

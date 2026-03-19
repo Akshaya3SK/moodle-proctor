@@ -4,6 +4,10 @@ Edit this file to tune the entire proctoring system.
 No need to touch individual module files.
 """
 
+import os
+
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ── Session ────────────────────────────────────────────────────────────────────
 CANDIDATE_ID    = "CANDIDATE-001"
 EXAM_NAME       = "General Examination"
@@ -56,6 +60,9 @@ _PRESETS = {
     ),
 }
 
+if STRICTNESS not in _PRESETS:
+    raise ValueError(f"Unsupported STRICTNESS '{STRICTNESS}'. Choose from: {', '.join(_PRESETS)}")
+
 # Merge selected preset into module-level names
 _preset = _PRESETS[STRICTNESS]
 NO_FACE_TIMEOUT_SEC   = _preset["NO_FACE_TIMEOUT_SEC"]
@@ -81,9 +88,9 @@ ENABLE_MOTION_DETECT   = True
 ENABLE_IDENTITY_VERIFY = True
 
 # ── Output ─────────────────────────────────────────────────────────────────────
-SCREENSHOTS_DIR        = "screenshots"
-LOG_FILE               = "violations.jsonl"
-YOLO_MODEL             = "yolov8n.pt"     # swap yolov8s.pt for more accuracy
+SCREENSHOTS_DIR        = os.path.join(MODULE_DIR, "screenshots")
+LOG_FILE               = os.path.join(MODULE_DIR, "violations.jsonl")
+YOLO_MODEL             = os.path.join(MODULE_DIR, "yolov8n.pt")     # swap yolov8s.pt for more accuracy
 
 # ── Head pose thresholds ───────────────────────────────────────────────────────
 YAW_THRESHOLD_DEG        = 25.0
@@ -93,3 +100,32 @@ PITCH_DOWN_THRESHOLD_DEG = 40.0   # Down is allowed (writing)
 # ── Blink rate ─────────────────────────────────────────────────────────────────
 LOW_BLINK_THRESHOLD  = 3    # blinks/min
 HIGH_BLINK_THRESHOLD = 40   # blinks/min
+
+# Shared detector tuning
+FACE_MIN_DETECTION_CONF    = 0.6
+FACE_MULTI_FACE_COOLDOWN   = 3.0
+GAZE_EVENT_COOLDOWN_SEC    = 5.0
+PHONE_CONF_THRESH          = 0.45
+PHONE_STREAK_FRAMES        = 2
+PHONE_EVENT_COOLDOWN_SEC   = 4.0
+OBJECT_CONF_THRESH         = 0.35
+OBJECT_EVENT_COOLDOWN_SEC  = 5.0
+BLINK_EAR_THRESHOLD        = 0.21
+BLINK_EAR_CONSEC_FRAMES    = 2
+BLINK_MIN_OBSERVATION_SEC  = 15.0
+BLINK_EVENT_COOLDOWN_SEC   = 30.0
+LIP_MAR_THRESHOLD          = 0.04
+LIP_MOVEMENT_STD_THRESHOLD = 0.003
+LIP_EVENT_COOLDOWN_SEC     = 8.0
+LIGHT_HISTORY_LEN          = 60
+LIGHT_SPIKE_DELTA          = 40
+LIGHT_DARK_THRESHOLD       = 25
+LIGHT_DARK_DURATION_SEC    = 3.0
+LIGHT_EVENT_COOLDOWN_SEC   = 8.0
+MOTION_THRESH              = 25
+MOTION_SUSTAINED_SEC       = 2.0
+MOTION_EVENT_COOLDOWN_SEC  = 8.0
+IDENTITY_ENROLL_FRAMES     = 30
+IDENTITY_CHECK_INTERVAL    = 10.0
+IDENTITY_EVENT_COOLDOWN    = 20.0
+IDENTITY_MISMATCH_STREAK   = 2

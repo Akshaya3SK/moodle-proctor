@@ -11,6 +11,7 @@ import time
 import numpy as np
 from collections import deque
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
@@ -22,9 +23,10 @@ MOUTH_BOTTOM = 14
 MOUTH_LEFT   = 78
 MOUTH_RIGHT  = 308
 
-MAR_THRESHOLD      = 0.04   # Mouth Aspect Ratio — above this = mouth open
-TALKING_SEC        = 3.0    # Must talk for this long before violation (moderate)
-EVENT_COOLDOWN_SEC = 8.0
+MAR_THRESHOLD      = C.LIP_MAR_THRESHOLD
+TALKING_SEC        = C.TALKING_SEC
+EVENT_COOLDOWN_SEC = C.LIP_EVENT_COOLDOWN_SEC
+MOVEMENT_STD_THRESH = C.LIP_MOVEMENT_STD_THRESHOLD
 HISTORY_LEN        = 30     # Frames of MAR history for smoothing
 
 
@@ -47,15 +49,17 @@ class LipMovementMonitor:
         mar = self._compute_mar(landmarks, w, h)
         self._mar_history.append(mar)
         smooth_mar       = float(np.mean(self._mar_history))
+        mar_std          = float(np.std(self._mar_history)) if len(self._mar_history) > 3 else 0.0
         self.current_mar = round(smooth_mar, 4)
 
         mouth_open = smooth_mar > MAR_THRESHOLD
-        self.status = "TALKING" if mouth_open else "CLOSED"
+        talking = mouth_open and mar_std >= MOVEMENT_STD_THRESH
+        self.status = "talking" if talking else ("open" if mouth_open else "closed")
 
-        self._handle_talking(mouth_open, frame_bgr, annotated_bgr, frame_index, smooth_mar)
-        self._draw_info(annotated_bgr, smooth_mar, mouth_open)
+        self._handle_talking(talking, frame_bgr, annotated_bgr, frame_index, smooth_mar)
+        self._draw_info(annotated_bgr, smooth_mar, talking)
 
-        return {"lip_status": self.status, "mar": self.current_mar}
+        return {"lip_status": self.status, "mar": self.current_mar, "talking": talking}
 
     def _compute_mar(self, landmarks, w, h) -> float:
         def pt(idx):

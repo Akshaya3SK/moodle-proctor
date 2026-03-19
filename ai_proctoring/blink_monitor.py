@@ -14,17 +14,19 @@ import time
 import numpy as np
 from collections import deque
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
-EAR_THRESHOLD        = 0.21   # Below this → eye closed
-EAR_CONSEC_FRAMES    = 2      # Min consecutive closed frames = 1 blink
+EAR_THRESHOLD        = C.BLINK_EAR_THRESHOLD
+EAR_CONSEC_FRAMES    = C.BLINK_EAR_CONSEC_FRAMES
 MEASURE_WINDOW_SEC   = 60.0   # Rolling window for BPM calculation
-LOW_BLINK_THRESHOLD  = 3      # blinks/min — suspiciously low (reading notes)
-HIGH_BLINK_THRESHOLD = 40     # blinks/min — suspiciously high (anxiety/cheating)
-EVENT_COOLDOWN_SEC   = 30.0   # Don't spam blink-rate events
+LOW_BLINK_THRESHOLD  = C.LOW_BLINK_THRESHOLD
+HIGH_BLINK_THRESHOLD = C.HIGH_BLINK_THRESHOLD
+MIN_OBSERVATION_SEC  = C.BLINK_MIN_OBSERVATION_SEC
+EVENT_COOLDOWN_SEC   = C.BLINK_EVENT_COOLDOWN_SEC
 
 # MediaPipe FaceLandmarker landmark indices for left & right eye
 # Left eye:  [362, 385, 387, 263, 373, 380]
@@ -58,6 +60,7 @@ class BlinkMonitor:
         self._closed_frames  = 0
         self._blink_times    = deque()   # Timestamps of each blink
         self._last_event_time = 0.0
+        self._started_at      = time.time()
 
         # Public state (read by HUD)
         self.blink_count     = 0
@@ -99,6 +102,7 @@ class BlinkMonitor:
             "blink_count": self.blink_count,
             "ear": self.current_ear,
             "status": self.status,
+            "anomaly": self.status != "NORMAL" and self.blinks_per_min > 0.0,
         }
 
     # ── Private ───────────────────────────────────────────────────────────────
@@ -116,10 +120,11 @@ class BlinkMonitor:
 
         window_elapsed = min(now - (self._blink_times[0] if self._blink_times else now),
                              MEASURE_WINDOW_SEC)
-        if window_elapsed > 5.0:
+        observation_elapsed = now - self._started_at
+        if observation_elapsed >= MIN_OBSERVATION_SEC and window_elapsed > 5.0:
             self.blinks_per_min = round(len(self._blink_times) / window_elapsed * 60.0, 1)
         else:
-            self.blinks_per_min = 0.0   # Not enough data yet
+            self.blinks_per_min = 0.0
 
     def _check_violation(self, frame, frame_index):
         now = time.time()

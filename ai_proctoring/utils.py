@@ -1,17 +1,23 @@
 """Utility helpers — screenshot capture and full HUD overlay."""
 
-import cv2, os
+import os
 from datetime import datetime
 
-SCREENSHOTS_DIR = "screenshots"
+import cv2
+
+import config as C
+SCREENSHOTS_DIR = C.SCREENSHOTS_DIR
 
 def ensure_directories():
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-    print(f"[Utils] Screenshot directory: '{SCREENSHOTS_DIR}/'")
+    os.makedirs(os.path.dirname(C.LOG_FILE) or ".", exist_ok=True)
+    print(f"[Utils] Screenshot directory: '{SCREENSHOTS_DIR}'")
 
 def capture_screenshot(frame, frame_index: int, tag: str = "") -> str:
+    ensure_directories()
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix   = f"_{tag}" if tag else ""
+    safe_tag = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in tag.strip())
+    suffix   = f"_{safe_tag}" if safe_tag else ""
     filename = f"frame_{frame_index:06d}{suffix}_{ts}.png"
     path     = os.path.join(SCREENSHOTS_DIR, filename)
     cv2.imwrite(path, frame)

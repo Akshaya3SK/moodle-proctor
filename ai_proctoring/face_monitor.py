@@ -15,13 +15,15 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 
 # ─── Tuning Constants ─────────────────────────────────────────────────────────
-NO_FACE_TIMEOUT_SEC  = 5.0
-MIN_DETECTION_CONF   = 0.6
+NO_FACE_TIMEOUT_SEC  = C.NO_FACE_TIMEOUT_SEC
+MIN_DETECTION_CONF   = C.FACE_MIN_DETECTION_CONF
+MULTI_FACE_COOLDOWN  = C.FACE_MULTI_FACE_COOLDOWN
 BBOX_COLOR_OK        = (0, 220, 80)
 BBOX_COLOR_WARN      = (0, 165, 255)
 BBOX_COLOR_VIOL      = (0, 0, 220)
@@ -56,6 +58,7 @@ class FaceMonitor:
         self._no_face_start         = None
         self._no_face_violated      = False
         self._multi_face_last_event = 0.0
+        self._last_bbox             = None
 
         print("[FaceMonitor] Initialised (MediaPipe Tasks FaceDetector).")
 
@@ -67,6 +70,7 @@ class FaceMonitor:
         result     = self.detector.detect(mp_image)
         detections = result.detections or []
         face_count = len(detections)
+        self._last_bbox = self._extract_primary_bbox(detections, frame_bgr.shape)
 
         self._draw_detections(annotated_bgr, detections, frame_bgr.shape)
         self._check_no_face(face_count, frame_bgr, annotated_bgr, frame_index)
@@ -74,6 +78,7 @@ class FaceMonitor:
 
         return {
             "face_count":    face_count,
+            "primary_bbox":  self._last_bbox,
             "violation":     face_count == 0 or face_count > 1,
             "violation_type": (
                 ViolationType.NO_FACE    if face_count == 0 else
@@ -114,7 +119,7 @@ class FaceMonitor:
         if face_count <= 1:
             return
         now = time.time()
-        if now - self._multi_face_last_event < 3.0:
+        if now - self._multi_face_last_event < MULTI_FACE_COOLDOWN:
             return
         scores   = [d.categories[0].score for d in detections if d.categories]
         avg_conf = sum(scores) / len(scores) if scores else 0.9
@@ -132,6 +137,21 @@ class FaceMonitor:
             (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.85,
             BBOX_COLOR_VIOL, 2, cv2.LINE_AA,
         )
+
+    def _extract_primary_bbox(self, detections, shape):
+        if not detections:
+            return None
+        h, w = shape[:2]
+        best = max(
+            detections,
+            key=lambda det: det.categories[0].score if det.categories else 0.0,
+        )
+        bb = best.bounding_box
+        x1 = max(0, int(bb.origin_x))
+        y1 = max(0, int(bb.origin_y))
+        x2 = min(w, int(bb.origin_x + bb.width))
+        y2 = min(h, int(bb.origin_y + bb.height))
+        return (x1, y1, x2, y2)
 
     def _draw_detections(self, annotated, detections, shape):
         h, w = shape[:2]

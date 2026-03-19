@@ -10,15 +10,17 @@ import cv2
 import time
 import os
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
 MODULE_DIR         = os.path.dirname(os.path.abspath(__file__))
-YOLO_MODEL_NAME    = os.path.join(MODULE_DIR, "yolov8n.pt")     # Nano = fastest; swap for yolov8s/m for accuracy
-PHONE_CONF_THRESH  = 0.45             # Minimum confidence to flag
+YOLO_MODEL_NAME    = C.YOLO_MODEL
+PHONE_CONF_THRESH  = C.PHONE_CONF_THRESH
 PHONE_CLASS_ID     = 67               # COCO class 67 = "cell phone"
-EVENT_COOLDOWN_SEC = 4.0              # Min seconds between repeated phone events
+PHONE_STREAK_FRAMES = C.PHONE_STREAK_FRAMES
+EVENT_COOLDOWN_SEC = C.PHONE_EVENT_COOLDOWN_SEC
 BBOX_COLOR         = (255, 60, 20)    # Blue-ish red (BGR)
 
 
@@ -29,6 +31,7 @@ class PhoneDetector:
         self.logger = logger
         self._model = None
         self._last_event_time = 0.0
+        self._detection_streak = 0
         self._load_model()
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -57,11 +60,16 @@ class PhoneDetector:
 
         if phone_boxes:
             self._draw_boxes(annotated_bgr, phone_boxes)
-            self._fire_violation(frame_bgr, frame_index, phone_boxes)
+            self._detection_streak += 1
+            if self._detection_streak >= PHONE_STREAK_FRAMES:
+                self._fire_violation(frame_bgr, frame_index, phone_boxes)
+        else:
+            self._detection_streak = 0
 
         return {
-            "phone_detected": len(phone_boxes) > 0,
+            "phone_detected": len(phone_boxes) > 0 and self._detection_streak >= PHONE_STREAK_FRAMES,
             "detections":      phone_boxes,
+            "streak":          self._detection_streak,
         }
 
     # ── Private helpers ───────────────────────────────────────────────────────

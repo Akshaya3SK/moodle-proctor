@@ -12,7 +12,6 @@ import config as C
 from violation_logger import ViolationLogger
 from utils import draw_status_overlay, ensure_directories
 
-# ── Conditional imports ────────────────────────────────────────────────────────
 if C.ENABLE_FACE_MONITOR:    from face_monitor      import FaceMonitor
 if C.ENABLE_GAZE_TRACKING:   from gaze_tracking     import GazeTracker
 if C.ENABLE_PHONE_DETECTION: from phone_detection   import PhoneDetector
@@ -247,11 +246,7 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
         )
         landmarks   = gaze_result.get("landmarks")
 
-    gaze_response = {
-        key: value
-        for key, value in gaze_result.items()
-        if key != "landmarks"
-    }
+    gaze_response = {key: value for key, value in gaze_result.items() if key != "landmarks"}
 
     # ── 3. Phone ───────────────────────────────────────────────────────────────
     phone_result = {}
@@ -322,7 +317,7 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
             "fps":        state.display_fps,
             "frame":      state.frame_count,
             "faces":      face_result.get("face_count", 0),
-            "gaze":       gaze_result.get("gaze_status", "N/A"),
+            "gaze":       gaze_result.get("gaze_direction", gaze_result.get("gaze_status", "N/A")),
             "phone":      phone_result.get("phone_detected", False),
             "objects":    object_result.get("count", 0),
             "audio":      getattr(audio_monitor,  "status", "OFF"),
@@ -347,7 +342,7 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
     if face_result.get("face_count", 1) > 1:
         violations.append("Multiple faces detected")
 
-    if gaze_result.get("gaze_status") == "looking_away":
+    if gaze_result.get("looking_away"):
         violations.append("Looking away from screen")
 
     if phone_result.get("phone_detected"):
@@ -361,15 +356,17 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
     if blink_result.get("anomaly"):
         violations.append("Abnormal blink rate detected")
 
-    if lip_result.get("lip_status") == "talking":
+    if lip_result.get("talking"):
         violations.append("Talking detected")
 
     if light_result.get("status") == "blocked":
         violations.append("Camera may be blocked")
     if light_result.get("status") == "too_dark":
         violations.append("Lighting too dark - face not visible")
+    if light_result.get("light_change"):
+        violations.append("Suspicious lighting change detected")
 
-    if motion_result.get("status") == "motion_detected":
+    if motion_result.get("motion_detected"):
         violations.append("Background movement detected")
 
     if identity_result.get("identity_status") == "mismatch":
@@ -385,8 +382,17 @@ def _process_frame(frame: np.ndarray, state: SessionState) -> dict:
             "face":     face_result,
             "gaze":     gaze_response,
             "phone":    phone_result,
+            "objects":  object_result,
+            "audio":    {
+                "status": getattr(audio_monitor, "status", "OFF"),
+                "rms": getattr(audio_monitor, "current_rms", 0),
+            },
             "blink":    blink_result,
             "lip":      lip_result,
+            "tab":      {
+                "status": getattr(tab_monitor, "status", "OFF"),
+                "switch_count": getattr(tab_monitor, "switch_count", 0),
+            },
             "lighting": light_result,
             "motion":   motion_result,
             "identity": identity_result,

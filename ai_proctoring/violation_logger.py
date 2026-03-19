@@ -1,12 +1,14 @@
-"""
-Violation Logger — all violation types including new ones.
-"""
+"""Violation Logger for all supported proctoring events."""
 
-import json, os, threading
+import json
+import os
+import threading
 from datetime import datetime
 from enum import Enum
 
-LOG_FILE = "violations.jsonl"
+import config as C
+
+LOG_FILE = C.LOG_FILE
 
 class ViolationType(str, Enum):
     # Original
@@ -47,11 +49,14 @@ class ViolationLogger:
     def __init__(self, log_path=LOG_FILE):
         self._log_path        = log_path
         self._lock            = threading.Lock()
+        os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
         self._file            = open(log_path, "a", encoding="utf-8")
         self.total_violations = 0
         print(f"[ViolationLogger] Logging to '{log_path}'.")
 
     def log(self, violation_type, confidence, screenshot_path, extra=None) -> dict:
+        if not isinstance(violation_type, ViolationType):
+            violation_type = ViolationType(str(violation_type))
         event = {
             "timestamp":       datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "violation_type":  violation_type.value,
@@ -82,7 +87,8 @@ class ViolationLogger:
                 line = line.strip()
                 if line:
                     try: events.append(json.loads(line))
-                    except: pass
+                    except json.JSONDecodeError:
+                        continue
         return events
 
     def _print_event(self, event, vtype):

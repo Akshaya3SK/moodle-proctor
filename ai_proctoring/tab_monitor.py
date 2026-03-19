@@ -89,6 +89,8 @@ class TabMonitor:
                 if current and current != self._last_window:
                     self._on_switch(self._last_window, current)
                     self._last_window = current
+                else:
+                    self.status = "FOCUSED"
             except Exception:
                 pass
 

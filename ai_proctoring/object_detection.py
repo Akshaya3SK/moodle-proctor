@@ -14,13 +14,13 @@ import cv2
 import time
 import os
 
+import config as C
 from violation_logger import ViolationLogger, ViolationType
 from utils import capture_screenshot
 
 
 # COCO class IDs for forbidden items
 FORBIDDEN_OBJECTS = {
-    67:  ("Cell Phone",   0.45),
     73:  ("Book",         0.40),
     76:  ("Scissors",     0.45),
     63:  ("Laptop",       0.45),
@@ -29,9 +29,9 @@ FORBIDDEN_OBJECTS = {
 }
 
 EARPHONE_KEYWORDS  = ["earphone", "headphone", "airpod"]   # YOLO custom if available
-EVENT_COOLDOWN_SEC = 5.0
+EVENT_COOLDOWN_SEC = C.OBJECT_EVENT_COOLDOWN_SEC
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-YOLO_MODEL_PATH = os.path.join(MODULE_DIR, "yolov8n.pt")
+YOLO_MODEL_PATH = C.YOLO_MODEL
 BBOX_COLORS = {
     "Cell Phone":  (0,   50,  255),
     "Book":        (0,   165, 255),
@@ -57,13 +57,13 @@ class ObjectDetector:
 
         results = self._model.predict(
             source  = frame_bgr,
-            conf    = 0.35,
+            conf    = C.OBJECT_CONF_THRESH,
             classes = list(FORBIDDEN_OBJECTS.keys()),
             verbose = False,
             imgsz   = 320,
         )
 
-        found = []
+        found_by_class = {}
         if results and len(results[0].boxes):
             for box in results[0].boxes:
                 cls_id = int(box.cls[0])
@@ -74,14 +74,26 @@ class ObjectDetector:
                 if conf < min_conf:
                     continue
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                found.append({"class_id": cls_id, "name": name,
-                              "confidence": conf, "bbox": [x1, y1, x2, y2]})
+                current = found_by_class.get(cls_id)
+                if current is None or conf > current["confidence"]:
+                    found_by_class[cls_id] = {
+                        "class_id": cls_id,
+                        "name": name,
+                        "confidence": conf,
+                        "bbox": [x1, y1, x2, y2],
+                    }
+
+        found = list(found_by_class.values())
 
         for item in found:
             self._draw_box(annotated_bgr, item)
             self._fire_violation(frame_bgr, frame_index, item)
 
-        return {"detections": found, "count": len(found)}
+        return {
+            "detections": found,
+            "count": len(found),
+            "labels": [item["name"] for item in found],
+        }
 
     def _fire_violation(self, frame, frame_index, item):
         now     = time.time()
